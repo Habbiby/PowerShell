@@ -1,7 +1,7 @@
 <#  =====================================================================================
     DESCRIPTION
         Allows domain administrators to quickly and easily add or remove user(s) from mailboxes
-        Two lists will popup, one to select users (from NDSReplicatedUsers), and one to select mailboxes
+        Two lists will popup, one to select users (from OU), and one to select mailboxes
         
     NOTES
         Can only put spaces in the popup lists when it's not the end of the string (apparently works outside of PS ISE though?)  
