@@ -27,7 +27,7 @@ Else {
      #Create a new file
 	 New-Item -Path $FilePath -ItemType "File"
 	 Add-Content -Path $FilePath -Value "taskkill.exe /f /im msedge.exe"
-	 Add-Content -Path $FilePath -Value '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" https://servicedesk.lotterywest.wa.gov.au --kiosk --new-window'
+	 Add-Content -Path $FilePath -Value '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe" ************* --kiosk --new-window'
      Out-File "$FilePath" -Append -Encoding Ascii
 	     Write-host "New File '$FilePath' Created!" -f Green
 }
@@ -48,7 +48,7 @@ IF($IdleExists){
        } 
 }
 ELSE{
-    Register-ScheduledTask -xml (Get-Content "C:\Users\SD.Kiosk\OneDrive - Lotterywest\Documents\IdleKioskRestart.xml" | Out-String) -TaskName "IdleKioskRestart" -TaskPath "\"
+    Register-ScheduledTask -xml (Get-Content "C:\Users\SD.Kiosk\*********\IdleKioskRestart.xml" | Out-String) -TaskName "IdleKioskRestart" -TaskPath "\"
     Start-ScheduledTask -TaskName IdleKioskRestart
 }
 
@@ -60,7 +60,7 @@ IF($KioskExists){
 }
 ELSE{
     $trigger = New-ScheduledTaskTrigger -AtLogOn 
-    $action = New-ScheduledTaskAction -Execute '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"' -Argument "https://servicedesk.lotterywest.wa.gov.au --kiosk"
+    $action = New-ScheduledTaskAction -Execute '"C:\Program Files (x86)\Microsoft\Edge\Application\msedge.exe"' -Argument "https://************.au --kiosk"
     $user = New-ScheduledTaskPrincipal -GroupId "BUILTIN\Users"
     Register-ScheduledTask -TaskName EdgeKioskMode -Principal $user -Trigger $trigger -Action $action
     Start-ScheduledTask -TaskName EdgeKioskMode

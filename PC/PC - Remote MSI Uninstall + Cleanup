@@ -7,7 +7,6 @@ Gives options to script user
 
 #Save credentials
 if ($Credentials -isnot [PSCredential]) {
-    write-host 'Include "Lotterywest\" in the User Name field.' -ForegroundColor Yellow
     $Credentials = Get-Credential
 }
 

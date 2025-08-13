@@ -46,7 +46,6 @@ $AppName = "Java" #Input part of the name of the installed app to search for in 
 
 #Save credentials to PowerShell session so it's not required to be entered every time - Saved as a secure string as part of PSCredential
 IF ($Credentials -isnot [PSCredential]) {
-    #write-host 'Include "Lotterywest\" in the User Name field.' -ForegroundColor Yellow
     $Credentials = Get-Credential
 }
 
