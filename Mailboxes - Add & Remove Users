@@ -1,0 +1,215 @@
+<#  =====================================================================================
+    DESCRIPTION
+        Allows domain administrators to quickly and easily add or remove user(s) from mailboxes
+        Two lists will popup, one to select users (from NDSReplicatedUsers), and one to select mailboxes
+        
+    NOTES
+        Can only put spaces in the popup lists when it's not the end of the string (apparently works outside of PS ISE though?)  
+        Unlicensed users have some strange errors when adding or removing users to distribution lists
+
+    FUNCTIONS
+        1. Connects to ExchangeOnline
+        
+        2. A pop-up list is given to users, which is quieried from exchange for a list of distribution lists and shared mailboxes to select from
+        
+        3. A pop-up list is given to users, which is queried from AD for a list of users to select from
+        
+        4. Outputs a list of changes based on the values chosen in the above steps 
+            4.1 Format is: "Editing $User.Name in $Mailbox.Name" for each entry
+            4.2 Asks for confirmation to continue in the script, otherwise it will exit
+            
+        5. User input for if they want to add or remove the users from the mailboxes
+            5.1 Enables or disables the user(s) in the chosen mailboxes based on the user input
+
+        6. Runs through each user, in each mailbox to remove or add them, outputting the step as it runs
+
+        7. Checks to see if they have permissions in each mailbox and outputs the result
+
+    =====================================================================================
+    PREREQUISITES
+        1. Open Run, enter appwiz.cpl
+            1.1 Click "Turn Windows features on or off" (Requires admin privs)
+            1.2 Enable "Active Directory Lightweight Directory Services"
+            
+        2. Enter credentials when prompted 
+            2.1 Will only do it the first time the PowerShell session is launched
+
+        3. Exchange Admin or Global Admin permissions, enabled in PIM AAD
+
+#===================================VARIABLES TO SET=====================================#>
+
+$OU = ""
+
+#========================================================================================#
+
+#Save credentials to PowerShell session so it's not required to be entered every time - Saved as a secure string
+IF ($Credentials -isnot [PSCredential]) {
+    $Credentials = Get-Credential
+}
+#----------------------------------------------------------------------------------------#
+
+Connect-ExchangeOnline -Credential $Credentials -ShowBanner:$false
+
+#=====================================User Prompts=======================================#
+
+Write-Host 'Please type "Remove" or "Add"' -ForegroundColor Yellow
+$Option = Read-Host "Would you like to remove or add user(s) to mailboxes?"
+
+IF (($Option -ne "Remove") -and ($Option -ne "Add")){
+    Write-Host "Incorrect input, exiting..." -ForegroundColor Yellow
+    return
+}
+''
+
+#------------------------------------Mailboxes & Users-----------------------------------#
+
+$Distributions = Get-DistributionGroup -ResultSize:Unlimited | Select-Object PrimarySmtpAddress, Alias, Name, DisplayName,  @{Name="Type";Expression={"Distribution List"}} 
+$SharedMail = Get-Mailbox -RecipientTypeDetails SharedMailbox -ResultSize:Unlimited | Select-Object PrimarySmtpAddress, Alias, Name, DisplayName, @{Name="Type";Expression={"Shared Mailbox"}} 
+
+
+$ADUsers = Get-ADUser -Filter * -SearchBase $OU | Select-object Name,UserPrincipalName, DistinguishedName | Sort-Object -Property Name `
+| Out-Gridview -Title "Select your user(s) from AD, spaces don't work if it's at the end of the search string, use quotation marks for a better search" -PassThru
+
+$Mailboxes = $SharedMail + $Distributions | Sort-Object -Property Name  | Out-GridView -title "All Mailboxes, spaces don't work if it's at the end of the search string, use quotation marks for a better search" -PassThru
+
+#----------------------------------------------------------------------------------------#
+
+
+
+#===================================Confirming Actions===================================#
+
+Write-Host "Please confirm the below changes before continuting:" -foregroundcolor yellow
+IF($Option -eq "Add"){
+    $Language = "to"
+}
+IF($Option -eq "Remove"){
+    $Language = "from"
+}
+
+(Get-Culture).Option
+ForEach($User in $ADUsers){
+    ForEach($Mailbox in $Mailboxes){
+        Write-Host (Get-Culture).TextInfo.ToTitleCase($Option) $User.Name $Language $Mailbox.Name
+
+    }
+}
+''
+''
+$Confirmation = Read-Host "Continue? Yes / No"
+IF($Confirmation -ne "Yes"){
+    Write-Host "Exiting...."
+    return
+}
+
+
+#=======================================THE SCRIPT=======================================#
+
+
+ForEach($User in $ADUsers){
+    ForEach($Mailbox in $Mailboxes){
+
+#======================================Adding Users======================================#
+
+        IF ($Option -eq "Add"){
+        ''
+        Write-Host "Adding" $User.name "to" $Mailbox.PrimarySmtpAddress -ForegroundColor Yellow
+
+#---------------------------------Add To Shared Mailboxes--------------------------------#
+            IF ($Mailbox.Type -eq "Shared Mailbox"){
+                $MBPerms = Get-MailboxPermission -Identity $Mailbox.PrimarySmtpAddress -User $User.Name -ErrorAction SilentlyContinue
+
+                IF ($MBPerms -ne $null){
+                    Write-Host $User.UserPrincipalName "already has permissions for shared mailbox" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                }
+                ELSE{
+                    Add-MailboxPermission -Identity $Mailbox.PrimarySmtpAddress -User $User.Name -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction SilentlyContinue | Out-null
+                    Add-RecipientPermission -Identity $Mailbox.PrimarySmtpAddress -Trustee $User.Name -AccessRights SendAs -Confirm:$false -ErrorAction SilentlyContinue | Out-null
+                    Start-Sleep -Seconds 10
+                    
+                    $MBPerms2 = Get-MailboxPermission -Identity $Mailbox.PrimarySmtpAddress -User $User.Name -ErrorAction SilentlyContinue
+                    IF ($MBPerms2 -eq $null){
+                        Write-Host $User.UserPrincipalName "not found in shared mailbox" $Mailbox.PrimarySmtpAddress -ForegroundColor Red
+                    }
+                    ELSE{
+                        Write-Host $User.UserPrincipalName "has been added to shared mailbox" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                    }
+                } 
+            }
+
+#--------------------------------Add To Distribution Lists-------------------------------#
+            IF ($Mailbox.Type -eq "Distribution List"){
+                $DLPerms = Get-DistributionGroupMember -Identity $Mailbox.PrimarySmtpAddress | Where-Object -Property Name -eq $User.Name -ErrorAction SilentlyContinue
+                
+                IF ($DLPerms -ne $null){
+                    Write-Host $User.UserPrincipalName "already has permissions for DL" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                }
+                ELSE{
+                    Add-DistributionGroupMember -Identity $Mailbox.PrimarySmtpAddress -Member $User.Name -Confirm:$false -ErrorAction SilentlyContinue | out-null
+                    Start-Sleep -Seconds 10
+                
+                    $DLPerms2 = Get-DistributionGroupMember -Identity $Mailbox.PrimarySmtpAddress | Where-Object -Property Name -eq $User.Name -ErrorAction SilentlyContinue
+                    IF ($DLPerms2 -eq $null){
+                        Write-Host $User.UserPrincipalName "not found in DL" $Mailbox.PrimarySmtpAddress -ForegroundColor Red
+                    }
+                    ELSE{
+                        Write-Host $User.UserPrincipalName "has been added to DL" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                    }
+                }
+            }
+        } #IF Add
+
+
+
+#=====================================Removing Users=====================================#
+       
+        IF ($Option -eq "Remove"){
+        ''
+        Write-Host "Removing" $User.name "from" $Mailbox.PrimarySmtpAddress -ForegroundColor Yellow
+
+#------------------------------Remove From Shared Mailboxes------------------------------#
+            IF ($Mailbox.Type -eq "Shared Mailbox"){
+                $MBPerms = Get-MailboxPermission -Identity $Mailbox.PrimarySmtpAddress -User $User.Name -ErrorAction SilentlyContinue
+
+                IF ($MBPerms -eq $null){
+                    Write-Host $User.UserPrincipalName "already has no permissions for shared mailbox" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                }
+                ELSE{
+                    Remove-MailboxPermission -Identity $Mailbox.PrimarySmtpAddress -User $User.Name -AccessRights FullAccess -InheritanceType All -Confirm:$false -ErrorAction SilentlyContinue | out-null
+                    Remove-RecipientPermission -Identity $Mailbox.PrimarySmtpAddress -Trustee $User.Name -AccessRights SendAs -Confirm:$false -ErrorAction SilentlyContinue | out-null
+                    Start-Sleep -Seconds 10
+                    
+                    $MBPerms2 = Get-MailboxPermission -Identity $Mailbox.PrimarySmtpAddress -User $User.Name -ErrorAction SilentlyContinue
+                    IF ($MBPerms2 -eq $null){
+                        Write-Host $User.UserPrincipalName "has been removed from shared mailbox" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                    }
+                    ELSE{
+                        Write-Host $User.UserPrincipalName "still has permissions for shared mailbox" $Mailbox.PrimarySmtpAddress -ForegroundColor Red
+                    }
+                } 
+            }
+
+#-----------------------------Remove From Distribution Lists-----------------------------#
+            IF ($Mailbox.Type -eq "Distribution List"){
+                $DLPerms = Get-DistributionGroupMember -Identity $Mailbox.PrimarySmtpAddress | Where-Object -Property Name -eq $User.Name -ErrorAction SilentlyContinue
+                
+                IF ($DLPerms -eq $null){
+                    Write-Host $User.UserPrincipalName "already has no permissions for" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                }
+                ELSE{
+                    Remove-DistributionGroupMember -Identity $Mailbox.PrimarySmtpAddress -Member $User.Name -Confirm:$false -ErrorAction SilentlyContinue | out-null
+                    Start-Sleep -Seconds 10
+                
+                    $DLPerms2 = Get-DistributionGroupMember -Identity $Mailbox.PrimarySmtpAddress | Where-Object -Property Name -eq $User.Name -ErrorAction SilentlyContinue
+                    IF ($DLPerms2 -eq $null){
+                        Write-Host $User.UserPrincipalName "has been removed from" $Mailbox.PrimarySmtpAddress -ForegroundColor Green
+                    }
+                    ELSE{
+                        Write-Host $User.UserPrincipalName "still has permissions for" $Mailbox.PrimarySmtpAddress -ForegroundColor Red
+                    }
+                }
+            }
+
+        } #IF Remove
+
+    } #ForEach Mailbox
+ } #ForEach User
