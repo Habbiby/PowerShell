@@ -1,0 +1,68 @@
+<#
+Gives options to script user 
+    1. Uninstall Checkmk, removes logfiles and removes the MSI on each $Comp
+        Has a sleep timer before remoing the MSI, so the uninstall can complete
+    2. Sees if Checkmk was installed successfully using registry
+#>
+
+#Save credentials
+if ($Credentials -isnot [PSCredential]) {
+    $Credentials = Get-Credential
+}
+
+
+
+#===================================VARIABLES TO SET=====================================#
+
+$Computers = "", "" #List of computers or hosts for the MSI to be installed on
+$CopyPath = "\\*******\check-mk.msi" #Where the MSI is being copied from (include the file name and .msi) will be copied to each Windows host
+$File = "check-mk.msi" #Name of the MSI to be installed, include .msi
+$AppName = "check" #Input part of the name of the installed app to search for in registry - e.g. check, 7-z, Microsoft, Manager, etc.
+
+#========================================================================================#
+
+
+write-host 'Type "1" for MSI uninstall' -ForegroundColor Yellow
+write-host 'Type "2" for MSI install check' -ForegroundColor Yellow
+$Option = read-host "Type here"
+
+
+
+
+IF ($Option -eq "1"){
+    ForEach ($Comp in $Computers) {
+        $LogFile = "\\$Comp\C$\TEMP\Installer-$Comp"
+
+        Write-host "Uninstalling on $comp"
+
+        Invoke-Command -AsJob -ComputerName $comp -Credential $Credentials -scriptblock `
+        {start-process  msiexec -ArgumentList "/x C:\TEMP\XXXXXXXXX /quiet" -wait} | out-null                   #File name required to be changed here
+        
+        Remove-Item "$LogFile.log"
+        start-sleep -Seconds 15
+        Remove-Item "\\$comp\C$\TEMP\$File"
+
+    }
+}
+
+
+
+IF ($Option -eq "2"){
+    $Results = ForEach ($Comp in $Computers) {
+        $TestInstall = Invoke-Command –ComputerName $Comp –ScriptBlock `
+                        {Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'} | `
+                        Where-Object -Property DisplayName -like "*$AppName*"
+        $TestInstall   
+
+        IF ($TestInstall -eq $Null) {
+            Write-Host "$Comp does not have $File installed" -ForegroundColor Red
+                       "$Comp does not have $File installed" #Used for the final table output
+        }
+        ELSE{
+            Write-Host "$Comp does have $File installed"  -ForegroundColor Green 
+        }
+    }
+}
+
+$Tableoutput = $Results | Format-Table PSComputerName, DisplayVersion, PSDrive, DisplayName, PSChildName, PSParentPath -AutoSize -GroupBy PSParentPath
+$Tableoutput 
