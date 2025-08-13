@@ -10,7 +10,7 @@ $StartTime = Get-Date
 #Make sure no tabs or spaces are after the PC name in the .txt file
 #$Computers = Get-Content -ErrorAction Stop -Path "C:\Temp\ComputerAssetList.txt" | Where { $_ }
 #$Computers = Get-Content -ErrorAction Stop -Path "C:\Temp\ComputerAssetListALL.txt" | Where { $_ }
-$Computers = "IS1004230"
+$Computers = ""
 
 
 
