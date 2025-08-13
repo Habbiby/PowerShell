@@ -1,0 +1,97 @@
+$Computer = Read-Host "Enter name of PC with a broken SCCM client state"
+Write-Host "Make sure '$($Computer)' is deleted from the SCCM console before continuing." -ForegroundColor Yellow
+Write-Host "This requires Administrator privileges to run." -ForegroundColor Yellow
+Read-Host "Press 'Enter' to continue..."
+
+Function SCCMAgentFix{
+    Invoke-Command -ComputerName $Computer -ScriptBlock{
+            Remove-Item C:\Windows\smscfg.ini
+            Remove-Item -Path Registry::HKLM\software\Microsoft\SMS -Recurse -ErrorAction SilentlyContinue
+            Get-ChildItem cert:LocalMachine\SMS | Remove-Item -Recurse -Force
+
+            Stop-Service ccmexec
+            Start-Sleep -Seconds 15
+
+            Write-Host "Starting ccmexec service" -ForegroundColor Yellow
+            Start-Service ccmexec
+
+            Write-Host "If no errors above, '$($Computer)' should be green in SCCM in ~ 1-2 hours" -ForegroundColor Yellow
+
+    }
+}
+
+
+$TestPort1 = Test-NetConnection -ComputerName $Computer -Port 5985 -ErrorAction SilentlyContinue -WarningAction 0 
+    IF ($TestPort.TcpTestSucceeded -eq $True){
+        SCCMAgentFix
+    }
+
+    ELSE{
+        Enter-PSSession $Computer | Enable-PSRemoting
+        Exit-PSSession
+        $TestPort2 = Test-NetConnection -ComputerName $Computer -Port 5985 -ErrorAction SilentlyContinue -WarningAction 0 
+
+        IF ($TestPort2.TcpTestSucceeded -eq $True){
+            SCCMAgentFix
+        }
+        ELSE{
+            Write-Host "WinRM failed to enable, exiting..." -Foregroundcolor Red
+            Exit
+        }
+    }
+
+
+
+
+
+
+<#
+Enables PSRemoting / WinRM using DCOM - DCOM = allows two different app components on different Windows machines to interact with each other (uses TCP port 135 which is already open) 
+"Invoke-Command" can only use TCP port 5985(HTTP) or 5986(HTTPS)
+CimSession uses 5985 by default but is overridden to 135 by setting -Protocol DCOM
+#>
+  
+<#              
+Write-Host "Trying to enable WinRM / PSRemoting on $Computer"
+$SessionArgs = @{
+ComputerName  = "$Computer"
+SessionOption = New-CimSessionOption -Protocol DCOM
+            }
+$MethodArgs = @{
+ClassName     = 'Win32_Process'
+MethodName    = 'Create'
+CimSession    = New-CimSession @SessionArgs
+Arguments     = @{
+CommandLine = "powershell Start-Process powershell -ArgumentList 'Enable-PSRemoting -Force'"
+                }
+            }
+Invoke-CimMethod @MethodArgs
+#>
+
+#If that doesn't work, run this manually:
+#Enter-PSSession $Computer
+#Enable-PSRemoting -Force   
+
+<#########
+Other commands to run if WinRM is failing or to see status
+##########
+
+==========================================
+Admin command prompt on the $comp:
+==========================================
+winrm enumerate winrm/config/listener                #ListeningOn should contain local IP and current IP of $comp
+winrm /quickconfig                                   #Locally sets up winrm configuration (Sets service to start + automatic start, and opens firewall port 5895 for WinRM )
+
+==========================================
+Powershell:
+==========================================
+Test-NetConnection -ComputerName $Comp -Port 5985    #Tests connection to $comp via port 5985
+Test-WSMan -ComputerName $Computer                   #Result back means successful
+
+Enter-PSSession $Computer
+Get-Item WSMan:\localhost\Client\TrustedHosts        #Lists trusted hosts
+Get-Service -Name winrm | Select Status              #Shows if the WinRM service is running
+Get-ChildItem WSMan:\localhost\Client\DefaultPorts   #Shows ports for WinRM
+Get-ChildItem WSMan:\localhost\Listener              #Shows what ports are setup to listen on
+Enable-PSRemoting -Force                             #Enables PowerShell remoting (Same as winrm /quickconfig)
+#>
