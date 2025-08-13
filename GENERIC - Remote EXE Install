@@ -1,0 +1,127 @@
+<# =====================================================================================
+    DESCRIPTION
+        This script was created to quickly install a specific EXE across multiple Windows hosts
+        The installer EXE will always be placed locally in C:\TEMP\ on each specified Windows host
+
+    NOTES
+        Install path is not a variable due to limitations of Invoke-Command, so the EXE is executed from C:\TEMP\$File
+        Has some inbuilt sleep timers to wait for the EXE file to be copied or installed 
+        Seperated the copy loop and the install loop as sometetimes it wouldn't run the EXE for some reason (even with a sleep timer after the copy)
+       
+
+    FUNCTIONS
+        1. Copies the EXE to the computers local directory
+            1.1 To C:\TEMP\$File or \\$Comp\C$\Temp\$File
+            1.2 This step is required as you can't authenticate to something (e.g. a file server) through a remote session (called a 'double-hop')
+
+        2. Installs the EXE from the above directory on each Windows host
+
+        3. Checks registry to see if the EXE was installed successfully 
+            3.1 HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*
+            3.2 HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'
+
+        4. Outputs a table with results, including additional information from registry for the installed EXE, if installed successfully
+
+    =====================================================================================
+    PREREQUISITES
+        1. Access to the respective file server or path to copy the EXE from
+            1.1 With your domain admin or local admin account
+
+        2. Access to the Windows host with your domain admin or local admin account
+            2.2 You may have to RDP to the server and run this script from there due to restrictions on domain admin or local admin accounts, depending on where it's run from or on what host
+    =====================================================================================#
+
+
+
+#===================================VARIABLES TO SET=====================================#>
+
+$Computers = "", "" #List of computers or hosts for the EXE to be installed on
+$CopyPath = "\\**********\jre-8u411-x86.exe" #Where the EXE is being copied from (include the file name and .EXE) will be copied to each Windows host
+$File = "jre-8u411-x86.exe" #Name of the EXE to be installed, include .EXE
+$AppName = "Java" #Input part of the name of the installed app to search for in registry - e.g. check, 7-z, Microsoft, Manager, etc.
+#Line 89!!!!!! Couldn't get the variable name passthrough working when it's pointing to a specific file (normally it would be "$Using:File")
+
+#========================================================================================#
+
+
+#Save credentials to PowerShell session so it's not required to be entered every time - Saved as a secure string as part of PSCredential
+IF ($Credentials -isnot [PSCredential]) {
+    #write-host 'Include "Lotterywest\" in the User Name field.' -ForegroundColor Yellow
+    $Credentials = Get-Credential
+}
+
+
+#========================================================================================#
+#Copy $File to each $Comp
+#Copy from $CopyPath to C:\TEMP\ on each $Comp
+#----------------------------------------------------------------------------------------#
+ForEach ($Comp in $Computers) {
+    $TestPath = Test-Path -Path "\\$comp\C$\TEMP\$File"
+    cd "\\$comp\C$\temp\"
+
+    IF ($TestPath -eq $False){
+        Write-Host "Copying file from $CopyPath to \\$Comp\C$\TEMP\" -ForegroundColor Yellow
+        Copy-Item -Path "$CopyPath" -Destination "\\$Comp\C$\TEMP\"
+        Start-Sleep -Seconds 8
+    }
+    ELSE{
+        Write-Host "$File already exists on \\$Comp\C$\TEMP\" -ForegroundColor Yellow
+    }
+}
+''
+
+
+#========================================================================================#
+#Install $File on each $Comp
+#Install directory is  C:\TEMP\$File on each $Comp
+#----------------------------------------------------------------------------------------#
+ForEach ($Comp in $Computers) {
+    $TestPath = Test-Path -Path "\\$comp\C$\TEMP\$File"
+
+    IF ($TestPath -eq $True){
+        Write-Host "Attempting to install $File on $Comp" -ForegroundColor Yellow
+        Invoke-Command -AsJob -ComputerName $comp -Credential $Credentials -scriptblock {start-process "C:\TEMP\jre-8u411-x86.exe" /qn -wait} | out-null       #File name required to be changed here as well
+    }
+    ELSE{
+        Write-Host "Couldn't find $File in \\$comp\C$\TEMP\  ... Exiting" -ForegroundColor Red    
+    }
+}
+
+
+''
+Write-host "Waiting 2 minutes for install(s)"
+Start-Sleep -Seconds 120
+''
+
+
+#========================================================================================#
+#Check if $File was installed succesfully for each $Comp
+#Looks in registry to see if it exists
+#----------------------------------------------------------------------------------------#
+#$AppName = Read-Host "Input part of the name of the installed app to search for in registry - e.g. check, 7-z, Microsoft, Manager, etc." 
+#''
+
+$Results = ForEach ($Comp in $Computers) {
+    $TestInstall = Invoke-Command –ComputerName $Comp –ScriptBlock {Get-ItemProperty 'HKLM:\Software\Microsoft\Windows\CurrentVersion\Uninstall\*','HKLM:\Software\Wow6432Node\Microsoft\Windows\CurrentVersion\Uninstall\*'} | Where-Object -Property DisplayName -like "*$AppName*"
+    $TestInstall   
+
+    IF ($TestInstall -eq $Null) {
+        Write-Host "$Comp does not have $File installed" -ForegroundColor Red
+                   "$Comp does not have $File installed" #Used for the final table output
+    }
+    ELSE{
+        Write-Host "$File successfully installed on $Comp"  -ForegroundColor Green 
+        $Tableoutput = $Results
+    }
+}
+
+
+
+''
+#========================================================================================#
+#Final output as a table 
+#Information about the install is pulled from registry on each $Comp
+#========================================================================================#
+
+$Tableoutput = $Results | Format-Table PSComputerName, DisplayVersion, PSDrive, DisplayName, PSChildName, PSParentPath -AutoSize #-GroupBy PSParentPath
+$Tableoutput 
