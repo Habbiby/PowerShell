@@ -105,8 +105,8 @@ Write-Host "`nDone!`n"
 #5=============================================================================
 #Setting the machine to auto login as SD.Kiosk
 New-ItemProperty -Name AutoAdminLogon -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Value 1 -Type String -force
-New-ItemProperty -Name DefaultUserName -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Value ***********" -Type String -force
-New-ItemProperty -Name DefaultPassword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Value ************ -Type String -force
+New-ItemProperty -Name DefaultUserName -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Value "***********" -Type String -force
+New-ItemProperty -Name DefaultPassword -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Value "************" -Type String -force
 New-ItemProperty -Name DefaultDomainName -Path "HKLM:\SOFTWARE\Microsoft\Windows NT\CurrentVersion\Winlogon" -Value "***********" -Type String -force
 Write-host 'Registry settings created!' -f Green
 
