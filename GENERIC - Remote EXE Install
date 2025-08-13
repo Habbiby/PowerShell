@@ -56,7 +56,7 @@ IF ($Credentials -isnot [PSCredential]) {
 #----------------------------------------------------------------------------------------#
 ForEach ($Comp in $Computers) {
     $TestPath = Test-Path -Path "\\$comp\C$\TEMP\$File"
-    cd "\\$comp\C$\temp\"
+    Set-Location "\\$comp\C$\temp\"
 
     IF ($TestPath -eq $False){
         Write-Host "Copying file from $CopyPath to \\$Comp\C$\TEMP\" -ForegroundColor Yellow
