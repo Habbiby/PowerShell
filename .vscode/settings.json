@@ -1,5 +1,0 @@
-{
-    "files.autoSave": "afterDelay",
-    "editor.defaultFormatter": "ms-vscode.powershell",
-    "powershell.scriptAnalysis.settingsPath": "C:\\TEMP\\Git\\Settings.psd1"
-}
