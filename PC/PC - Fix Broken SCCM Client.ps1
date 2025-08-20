@@ -21,7 +21,7 @@ Function SCCMAgentFix{
 }
 
 
-$TestPort1 = Test-NetConnection -ComputerName $Computer -Port 5985 -ErrorAction SilentlyContinue -WarningAction 0 
+$TestPort = Test-NetConnection -ComputerName $Computer -Port 5985 -ErrorAction SilentlyContinue -WarningAction 0 
     IF ($TestPort.TcpTestSucceeded -eq $True){
         SCCMAgentFix
     }
